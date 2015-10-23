@@ -54,10 +54,17 @@ class DateTimeType extends Type
         }
 
         if ($value instanceof \DateTime) {
-            return $value->format($platform->getDateTimeFormatString());
+            $value = $value->format($platform->getDateTimeFormatString());
+        } else {
+            throw ConversionException::conversionFailedInvalidType($value, $this->getName(), ['null', 'DateTime']);
         }
 
-        throw ConversionException::conversionFailedInvalidType($value, $this->getName(), ['null', 'DateTime']);
+        if ($platform instanceof SQLServer2008Platform){
+            $value = substr($value, 0, strlen($value) - 3);
+        }
+
+        return $value;
+
     }
 
     /**
