@@ -8,13 +8,13 @@ class StatementTest extends \Doctrine\Tests\DbalTestCase
 {
     /**
      *
-     * @var \Doctrine\DBAL\Connection 
+     * @var \Doctrine\DBAL\Connection
      */
     private $conn;
-    
+
     /**
      *
-     * @var \Doctrine\DBAL\Configuration 
+     * @var \Doctrine\DBAL\Configuration
      */
     private $configuration;
 
@@ -31,7 +31,7 @@ class StatementTest extends \Doctrine\Tests\DbalTestCase
         $driverConnection->expects($this->any())
                 ->method('prepare')
                 ->will($this->returnValue($this->pdoStatement));
-        
+
         $driver = $this->getMock('\Doctrine\DBAL\Driver');
         $constructorArgs = array(
             array(
@@ -43,7 +43,7 @@ class StatementTest extends \Doctrine\Tests\DbalTestCase
         $this->conn->expects($this->atLeastOnce())
                 ->method('getWrappedConnection')
                 ->will($this->returnValue($driverConnection));
-        
+
         $this->configuration = $this->getMock('\Doctrine\DBAL\Configuration');
         $this->conn->expects($this->any())
                 ->method('getConfiguration')
@@ -54,7 +54,7 @@ class StatementTest extends \Doctrine\Tests\DbalTestCase
             ->will($this->returnValue($driver));
 
     }
-    
+
     public function testExecuteCallsLoggerStartQueryWithParametersWhenValuesBound()
     {
         $name = 'foo';
@@ -63,21 +63,21 @@ class StatementTest extends \Doctrine\Tests\DbalTestCase
         $values = array($name => $var);
         $types = array($name => $type);
         $sql = '';
-        
+
         $logger = $this->getMock('\Doctrine\DBAL\Logging\SQLLogger');
         $logger->expects($this->once())
                 ->method('startQuery')
                 ->with($this->equalTo($sql), $this->equalTo($values), $this->equalTo($types));
-        
+
         $this->configuration->expects($this->once())
                 ->method('getSQLLogger')
                 ->will($this->returnValue($logger));
-        
+
         $statement = new Statement($sql, $this->conn);
         $statement->bindValue($name, $var, $type);
         $statement->execute();
     }
-    
+
     public function testExecuteCallsLoggerStartQueryWithParametersWhenParamsPassedToExecute()
     {
         $name = 'foo';
@@ -85,18 +85,40 @@ class StatementTest extends \Doctrine\Tests\DbalTestCase
         $values = array($name => $var);
         $types = array();
         $sql = '';
-        
+
         $logger = $this->getMock('\Doctrine\DBAL\Logging\SQLLogger');
         $logger->expects($this->once())
                 ->method('startQuery')
                 ->with($this->equalTo($sql), $this->equalTo($values), $this->equalTo($types));
-        
+
         $this->configuration->expects($this->once())
                 ->method('getSQLLogger')
                 ->will($this->returnValue($logger));
-        
+
         $statement = new Statement($sql, $this->conn);
         $statement->execute($values);
+    }
+
+    public function testExecuteCallsStartQueryWithTheParametersBoundViaBindParam()
+    {
+        $name = 'foo';
+        $var = 'bar';
+        $values = array($name => $var);
+        $types = array($name => \PDO::PARAM_STR);
+        $sql = '';
+
+        $logger = $this->getMock('Doctrine\DBAL\Logging\SQLLogger');
+        $logger->expects($this->once())
+                ->method('startQuery')
+                ->with($this->equalTo($sql), $this->equalTo($values), $this->equalTo($types));
+
+        $this->configuration->expects(self::once())
+                ->method('getSQLLogger')
+                ->willReturn($logger);
+
+        $statement = new Statement($sql, $this->conn);
+        $statement->bindParam($name, $var);
+        $statement->execute();
     }
 
     /**

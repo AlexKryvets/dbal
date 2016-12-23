@@ -9,6 +9,8 @@ use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
 
+require_once __DIR__ . '/../../TestInit.php';
+
 class OraclePlatformTest extends AbstractPlatformTestCase
 {
     static public function dataValidIdentifiers()
@@ -185,6 +187,14 @@ class OraclePlatformTest extends AbstractPlatformTestCase
     public function testSupportsSavePoints()
     {
         $this->assertTrue($this->_platform->supportsSavepoints());
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function supportsCommentOnStatement()
+    {
+        return true;
     }
 
     public function getGenerateIndexSql()
@@ -543,6 +553,11 @@ class OraclePlatformTest extends AbstractPlatformTestCase
         );
     }
 
+    protected function getQuotesDropForeignKeySQL()
+    {
+        return 'ALTER TABLE "table" DROP CONSTRAINT "select"';
+    }
+
     /**
      * @group DBAL-423
      */
@@ -692,6 +707,63 @@ EOD;
     }
 
     /**
+     * @dataProvider getReturnsGetListTableColumnsSQL
+     * @group DBAL-831
+     */
+    public function testReturnsGetListTableColumnsSQL($database, $expectedSql)
+    {
+        // note: this assertion is a bit strict, as it compares a full SQL string.
+        // Should this break in future, then please try to reduce the matching to substring matching while reworking
+        // the tests
+        $this->assertEquals($expectedSql, $this->_platform->getListTableColumnsSQL('"test"', $database));
+    }
+
+    public function getReturnsGetListTableColumnsSQL()
+    {
+        return array(
+            array(
+                null,
+                "SELECT   c.*,
+                         (
+                             SELECT d.comments
+                             FROM   user_col_comments d
+                             WHERE  d.TABLE_NAME = c.TABLE_NAME
+                             AND    d.COLUMN_NAME = c.COLUMN_NAME
+                         ) AS comments
+                FROM     user_tab_columns c
+                WHERE    c.table_name = 'test' 
+                ORDER BY c.column_name"
+            ),
+            array(
+                '/',
+                "SELECT   c.*,
+                         (
+                             SELECT d.comments
+                             FROM   user_col_comments d
+                             WHERE  d.TABLE_NAME = c.TABLE_NAME
+                             AND    d.COLUMN_NAME = c.COLUMN_NAME
+                         ) AS comments
+                FROM     user_tab_columns c
+                WHERE    c.table_name = 'test' 
+                ORDER BY c.column_name"
+            ),
+            array(
+                'scott',
+                "SELECT   c.*,
+                         (
+                             SELECT d.comments
+                             FROM   all_col_comments d
+                             WHERE  d.TABLE_NAME = c.TABLE_NAME
+                             AND    d.COLUMN_NAME = c.COLUMN_NAME
+                         ) AS comments
+                FROM     all_tab_columns c
+                WHERE    c.table_name = 'test' AND c.owner = 'SCOTT'
+                ORDER BY c.column_name"
+            ),
+        );
+    }
+
+    /**
      * {@inheritdoc}
      */
     protected function getQuotesReservedKeywordInUniqueConstraintDeclarationSQL()
@@ -705,6 +777,14 @@ EOD;
     protected function getQuotesReservedKeywordInIndexDeclarationSQL()
     {
         return 'INDEX "select" (foo)';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getQuotesReservedKeywordInTruncateTableSQL()
+    {
+        return 'TRUNCATE TABLE "select"';
     }
 
     /**
@@ -725,5 +805,53 @@ EOD;
         return array(
             'ALTER INDEX idx_foo RENAME TO idx_foo_renamed',
         );
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesDatabaseNameInListSequencesSQL()
+    {
+        $this->assertContains("'Foo''Bar\\\\'", $this->_platform->getListSequencesSQL("Foo'Bar\\"), '', true);
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesTableNameInListTableIndexesSQL()
+    {
+        $this->assertContains("'Foo''Bar\\\\'", $this->_platform->getListTableIndexesSQL("Foo'Bar\\"), '', true);
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesTableNameInListTableForeignKeysSQL()
+    {
+        $this->assertContains("'Foo''Bar\\\\'", $this->_platform->getListTableForeignKeysSQL("Foo'Bar\\"), '', true);
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesTableNameInListTableConstraintsSQL()
+    {
+        $this->assertContains("'Foo''Bar\\\\'", $this->_platform->getListTableConstraintsSQL("Foo'Bar\\"), '', true);
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesTableNameInListTableColumnsSQL()
+    {
+        $this->assertContains("'Foo''Bar\\\\'", $this->_platform->getListTableColumnsSQL("Foo'Bar\\"), '', true);
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesDatabaseNameInListTableColumnsSQL()
+    {
+        $this->assertContains("'Foo''Bar\\\\'", $this->_platform->getListTableColumnsSQL('foo_table', "Foo'Bar\\"), '', true);
     }
 }

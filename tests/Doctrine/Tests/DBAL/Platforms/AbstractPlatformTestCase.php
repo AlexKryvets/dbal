@@ -83,7 +83,7 @@ abstract class AbstractPlatformTestCase extends \Doctrine\Tests\DbalTestCase
         );
     }
 
-    public function testGetInvalidForeignKeyReferentialActionSQL()
+    public function testGetInvalidtForeignKeyReferentialActionSQL()
     {
         $this->setExpectedException('InvalidArgumentException');
         $this->_platform->getForeignKeyReferentialActionSQL('unknown');
@@ -105,6 +105,34 @@ abstract class AbstractPlatformTestCase extends \Doctrine\Tests\DbalTestCase
     {
         $this->setExpectedException('Doctrine\DBAL\DBALException');
         $this->_platform->registerDoctrineTypeMapping('foo', 'bar');
+    }
+
+    /**
+     * @group DBAL-939
+     *
+     * @dataProvider getIsCommentedDoctrineType
+     */
+    public function testIsCommentedDoctrineType(Type $type, $commented)
+    {
+        $this->assertSame($commented, $this->_platform->isCommentedDoctrineType($type));
+    }
+
+    public function getIsCommentedDoctrineType()
+    {
+        $this->setUp();
+
+        $data = array();
+
+        foreach (Type::getTypesMap() as $typeName => $className) {
+            $type = Type::getType($typeName);
+
+            $data[$typeName] = array(
+                $type,
+                $type->requiresSQLCommentHint($this->_platform),
+            );
+        }
+
+        return $data;
     }
 
     public function testCreateWithNoColumns()
@@ -622,6 +650,22 @@ abstract class AbstractPlatformTestCase extends \Doctrine\Tests\DbalTestCase
     abstract protected function getQuotesReservedKeywordInUniqueConstraintDeclarationSQL();
 
     /**
+     * @group DBAL-2270
+     */
+    public function testQuotesReservedKeywordInTruncateTableSQL()
+    {
+        $this->assertSame(
+            $this->getQuotesReservedKeywordInTruncateTableSQL(),
+            $this->_platform->getTruncateTableSQL('select')
+        );
+    }
+
+    /**
+     * @return string
+     */
+    abstract protected function getQuotesReservedKeywordInTruncateTableSQL();
+
+    /**
      * @group DBAL-1051
      */
     public function testQuotesReservedKeywordInIndexDeclarationSQL()
@@ -649,6 +693,19 @@ abstract class AbstractPlatformTestCase extends \Doctrine\Tests\DbalTestCase
     protected function supportsInlineIndexDeclaration()
     {
         return true;
+    }
+
+    public function testSupportsCommentOnStatement()
+    {
+        $this->assertSame($this->supportsCommentOnStatement(), $this->_platform->supportsCommentOnStatement());
+    }
+
+    /**
+     * @return bool
+     */
+    protected function supportsCommentOnStatement()
+    {
+        return false;
     }
 
     /**
@@ -967,6 +1024,52 @@ abstract class AbstractPlatformTestCase extends \Doctrine\Tests\DbalTestCase
         );
     }
 
+    /**
+     * @group DBAL-1237
+     */
+    public function testQuotesDropForeignKeySQL()
+    {
+        if (! $this->_platform->supportsForeignKeyConstraints()) {
+            $this->markTestSkipped(
+                sprintf('%s does not support foreign key constraints.', get_class($this->_platform))
+            );
+        }
+
+        $tableName = 'table';
+        $table = new Table($tableName);
+        $foreignKeyName = 'select';
+        $foreignKey = new ForeignKeyConstraint(array(), 'foo', array(), 'select');
+        $expectedSql = $this->getQuotesDropForeignKeySQL();
+
+        $this->assertSame($expectedSql, $this->_platform->getDropForeignKeySQL($foreignKeyName, $tableName));
+        $this->assertSame($expectedSql, $this->_platform->getDropForeignKeySQL($foreignKey, $table));
+    }
+
+    protected function getQuotesDropForeignKeySQL()
+    {
+        return 'ALTER TABLE "table" DROP FOREIGN KEY "select"';
+    }
+
+    /**
+     * @group DBAL-1237
+     */
+    public function testQuotesDropConstraintSQL()
+    {
+        $tableName = 'table';
+        $table = new Table($tableName);
+        $constraintName = 'select';
+        $constraint = new ForeignKeyConstraint(array(), 'foo', array(), 'select');
+        $expectedSql = $this->getQuotesDropConstraintSQL();
+
+        $this->assertSame($expectedSql, $this->_platform->getDropConstraintSQL($constraintName, $tableName));
+        $this->assertSame($expectedSql, $this->_platform->getDropConstraintSQL($constraint, $table));
+    }
+
+    protected function getQuotesDropConstraintSQL()
+    {
+        return 'ALTER TABLE "table" DROP CONSTRAINT "select"';
+    }
+
     protected function getStringLiteralQuoteCharacter()
     {
         return "'";
@@ -1203,54 +1306,4 @@ abstract class AbstractPlatformTestCase extends \Doctrine\Tests\DbalTestCase
      * @return array
      */
     abstract protected function getGeneratesAlterTableRenameIndexUsedByForeignKeySQL();
-
-    /**
-     * @group DBAL-1082
-     *
-     * @dataProvider getGeneratesDecimalTypeDeclarationSQL
-     */
-    public function testGeneratesDecimalTypeDeclarationSQL(array $column, $expectedSql)
-    {
-        $this->assertSame($expectedSql, $this->_platform->getDecimalTypeDeclarationSQL($column));
-    }
-
-    /**
-     * @return array
-     */
-    public function getGeneratesDecimalTypeDeclarationSQL()
-    {
-        return array(
-            array(array(), 'NUMERIC(10, 0)'),
-            array(array('unsigned' => true), 'NUMERIC(10, 0)'),
-            array(array('unsigned' => false), 'NUMERIC(10, 0)'),
-            array(array('precision' => 5), 'NUMERIC(5, 0)'),
-            array(array('scale' => 5), 'NUMERIC(10, 5)'),
-            array(array('precision' => 8, 'scale' => 2), 'NUMERIC(8, 2)'),
-        );
-    }
-
-    /**
-     * @group DBAL-1082
-     *
-     * @dataProvider getGeneratesFloatDeclarationSQL
-     */
-    public function testGeneratesFloatDeclarationSQL(array $column, $expectedSql)
-    {
-        $this->assertSame($expectedSql, $this->_platform->getFloatDeclarationSQL($column));
-    }
-
-    /**
-     * @return array
-     */
-    public function getGeneratesFloatDeclarationSQL()
-    {
-        return array(
-            array(array(), 'DOUBLE PRECISION'),
-            array(array('unsigned' => true), 'DOUBLE PRECISION'),
-            array(array('unsigned' => false), 'DOUBLE PRECISION'),
-            array(array('precision' => 5), 'DOUBLE PRECISION'),
-            array(array('scale' => 5), 'DOUBLE PRECISION'),
-            array(array('precision' => 8, 'scale' => 2), 'DOUBLE PRECISION'),
-        );
-    }
 }

@@ -45,7 +45,7 @@ class Driver extends AbstractPostgreSQLDriver
                 $driverOptions
             );
 
-            if (PHP_VERSION_ID >= 50600
+            if (defined('PDO::PGSQL_ATTR_DISABLE_PREPARES')
                 && (! isset($driverOptions[PDO::PGSQL_ATTR_DISABLE_PREPARES])
                     || true === $driverOptions[PDO::PGSQL_ATTR_DISABLE_PREPARES]
                 )
@@ -90,9 +90,9 @@ class Driver extends AbstractPostgreSQLDriver
             $dsn .= 'dbname=' . $params['dbname'] . ' ';
         } else {
             // Used for temporary connections to allow operations like dropping the database currently connected to.
-            // Connecting without an explicit database does not work, therefore "template1" database is used
-            // as it is certainly present in every server setup.
-            $dsn .= 'dbname=template1' . ' ';
+            // Connecting without an explicit database does not work, therefore "postgres" database is used
+            // as it is certainly present in every server setup. 
+            $dsn .= 'dbname=postgres' . ' ';
         }
 
         if (isset($params['sslmode'])) {

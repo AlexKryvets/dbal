@@ -375,9 +375,10 @@ class OraclePlatform extends AbstractPlatform
     public function getListSequencesSQL($database)
     {
         $database = $this->normalizeIdentifier($database);
+        $database = $this->quoteStringLiteral($database->getName());
 
         return "SELECT sequence_name, min_value, increment_by FROM sys.all_sequences ".
-               "WHERE SEQUENCE_OWNER = '" . $database->getName() . "'";
+               "WHERE SEQUENCE_OWNER = " . $database;
     }
 
     /**
@@ -418,6 +419,7 @@ class OraclePlatform extends AbstractPlatform
     public function getListTableIndexesSQL($table, $currentDatabase = null)
     {
         $table = $this->normalizeIdentifier($table);
+        $table = $this->quoteStringLiteral($table->getName());
 
         return "SELECT uind_col.index_name AS name,
                        (
@@ -444,7 +446,7 @@ class OraclePlatform extends AbstractPlatform
                            WHERE  ucon.constraint_name = uind_col.index_name
                        ) AS is_primary
              FROM      user_ind_columns uind_col
-             WHERE     uind_col.table_name = '" . $table->getName() . "'
+             WHERE     uind_col.table_name = " . $table . "
              ORDER BY  uind_col.column_position ASC";
     }
 
@@ -608,29 +610,27 @@ END;';
      */
     public function getListTableForeignKeysSQL($table)
     {
-        $table = $table = $this->normalizeIdentifier($table);
+        $table = $this->normalizeIdentifier($table);
+        $table = $this->quoteStringLiteral($table->getName());
 
         return "SELECT alc.constraint_name,
           alc.DELETE_RULE,
+          alc.search_condition,
           cols.column_name \"local_column\",
           cols.position,
-          (
-              SELECT r_cols.table_name
-              FROM   user_cons_columns r_cols
-              WHERE  alc.r_constraint_name = r_cols.constraint_name
-              AND    r_cols.position = cols.position
-          ) AS \"references_table\",
-          (
-              SELECT r_cols.column_name
-              FROM   user_cons_columns r_cols
-              WHERE  alc.r_constraint_name = r_cols.constraint_name
-              AND    r_cols.position = cols.position
-          ) AS \"foreign_column\"
+          r_alc.table_name \"references_table\",
+          r_cols.column_name \"foreign_column\"
      FROM user_cons_columns cols
-     JOIN user_constraints alc
+LEFT JOIN user_constraints alc
        ON alc.constraint_name = cols.constraint_name
+LEFT JOIN user_constraints r_alc
+       ON alc.r_constraint_name = r_alc.constraint_name
+LEFT JOIN user_cons_columns r_cols
+       ON r_alc.constraint_name = r_cols.constraint_name
+      AND cols.position = r_cols.position
+    WHERE alc.constraint_name = cols.constraint_name
       AND alc.constraint_type = 'R'
-      AND alc.table_name = '" . $table->getName() . "'
+      AND alc.table_name = " . $table . "
     ORDER BY cols.constraint_name ASC, cols.position ASC";
     }
 
@@ -640,8 +640,9 @@ END;';
     public function getListTableConstraintsSQL($table)
     {
         $table = $this->normalizeIdentifier($table);
+        $table = $this->quoteStringLiteral($table->getName());
 
-        return "SELECT * FROM user_constraints WHERE table_name = '" . $table->getName() . "'";
+        return "SELECT * FROM user_constraints WHERE table_name = " . $table;
     }
 
     /**
@@ -650,16 +651,18 @@ END;';
     public function getListTableColumnsSQL($table, $database = null)
     {
         $table = $this->normalizeIdentifier($table);
+        $table = $this->quoteStringLiteral($table->getName());
 
         $tabColumnsTableName = "user_tab_columns";
         $colCommentsTableName = "user_col_comments";
         $ownerCondition = '';
 
-        if (null !== $database) {
+        if (null !== $database && '/' !== $database) {
             $database = $this->normalizeIdentifier($database);
+            $database = $this->quoteStringLiteral($database->getName());
             $tabColumnsTableName = "all_tab_columns";
             $colCommentsTableName = "all_col_comments";
-            $ownerCondition = "AND c.owner = '" . $database->getName() . "'";
+            $ownerCondition = "AND c.owner = " . $database;
         }
 
         return "SELECT   c.*,
@@ -670,7 +673,7 @@ END;';
                              AND    d.COLUMN_NAME = c.COLUMN_NAME
                          ) AS comments
                 FROM     $tabColumnsTableName c
-                WHERE    c.table_name = '" . $table->getName() . "' $ownerCondition
+                WHERE    c.table_name = " . $table . " $ownerCondition
                 ORDER BY c.column_name";
     }
 
@@ -691,13 +694,16 @@ END;';
      */
     public function getDropForeignKeySQL($foreignKey, $table)
     {
-        if ($foreignKey instanceof ForeignKeyConstraint) {
-            $foreignKey = $foreignKey->getQuotedName($this);
+        if (! $foreignKey instanceof ForeignKeyConstraint) {
+            $foreignKey = new Identifier($foreignKey);
         }
 
-        if ($table instanceof Table) {
-            $table = $table->getQuotedName($this);
+        if (! $table instanceof Table) {
+            $table = new Identifier($table);
         }
+
+        $foreignKey = $foreignKey->getQuotedName($this);
+        $table = $table->getQuotedName($this);
 
         return 'ALTER TABLE ' . $table . ' DROP CONSTRAINT ' . $foreignKey;
     }
@@ -890,7 +896,7 @@ END;';
             $check = (isset($field['check']) && $field['check']) ?
                 ' ' . $field['check'] : '';
 
-            $typeDecl = $field['type']->getSQLDeclaration($field, $this);
+            $typeDecl = $field['type']->getSqlDeclaration($field, $this);
             $columnDef = $typeDecl . $default . $notnull . $unique . $check;
         }
 
@@ -1082,7 +1088,9 @@ END;';
      */
     public function getTruncateTableSQL($tableName, $cascade = false)
     {
-        return 'TRUNCATE TABLE '.$tableName;
+        $tableIdentifier = new Identifier($tableName);
+
+        return 'TRUNCATE TABLE ' . $tableIdentifier->getQuotedName($this);
     }
 
     /**
@@ -1147,5 +1155,15 @@ END;';
     public function getBlobTypeDeclarationSQL(array $field)
     {
         return 'BLOB';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function quoteStringLiteral($str)
+    {
+        $str = str_replace('\\', '\\\\', $str); // Oracle requires backslashes to be escaped aswell.
+
+        return parent::quoteStringLiteral($str);
     }
 }
