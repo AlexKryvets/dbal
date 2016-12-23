@@ -20,6 +20,7 @@
 namespace Doctrine\DBAL\Types;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\SQLServer2008Platform;
 
 /**
  * Type that maps an SQL DATETIME/TIMESTAMP to a PHP DateTime object.
